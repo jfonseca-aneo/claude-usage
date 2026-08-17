@@ -27,7 +27,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    let command = cli.command.unwrap_or(Command::Summary);
+    let command = cli.command.unwrap_or(Command::Code { claude_dir: None });
 
     if let Command::Code { claude_dir } = command {
         let range = time_range::resolve(
@@ -35,7 +35,7 @@ fn run() -> Result<()> {
             cli.range.since.as_deref(),
             cli.range.until.as_deref(),
         )?;
-        return run_code(&range, claude_dir, cli.json, cli.html, cli.open);
+        return run_code(&range, claude_dir, cli.json, cli.html);
     }
 
     let api_key = cli.api_key.clone().unwrap_or_default();
@@ -66,7 +66,7 @@ fn run() -> Result<()> {
     let client = AdminClient::new(api_key)?;
 
     match command {
-        Command::Summary => run_summary(&client, &range, cli.json, cli.html, cli.open),
+        Command::Summary => run_summary(&client, &range, cli.json, cli.html),
         Command::Code { .. } => unreachable!("handled above"),
         Command::Usage { group_by, bucket_width } => {
             if cli.html.is_some() {
@@ -109,7 +109,6 @@ fn run_summary(
     range: &time_range::Range,
     json: bool,
     html: Option<std::path::PathBuf>,
-    open: bool,
 ) -> Result<()> {
     let org_name = client.org_info().ok().map(|o| o.name);
 
@@ -135,9 +134,7 @@ fn run_summary(
         let doc = render_html::render(&summary);
         fs::write(&path, doc)?;
         println!("\nWrote HTML report to {}", path.display());
-        if open {
-            open_in_browser(&path)?;
-        }
+        open_in_browser(&path)?;
     }
 
     Ok(())
@@ -148,7 +145,6 @@ fn run_code(
     claude_dir: Option<std::path::PathBuf>,
     json: bool,
     html: Option<std::path::PathBuf>,
-    open: bool,
 ) -> Result<()> {
     let dir = match claude_dir {
         Some(d) => d,
@@ -203,9 +199,7 @@ fn run_code(
         let doc = render_html::render(&summary);
         fs::write(&path, doc)?;
         println!("\nWrote HTML report to {}", path.display());
-        if open {
-            open_in_browser(&path)?;
-        }
+        open_in_browser(&path)?;
     }
 
     Ok(())
@@ -232,7 +226,7 @@ fn open_in_browser(path: &std::path::Path) -> Result<()> {
     let status = ProcessCommand::new("cmd").args(["/C", "start", ""]).arg(&abs).status();
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     let status: std::io::Result<std::process::ExitStatus> =
-        Err(std::io::Error::other("unsupported platform for --open"));
+        Err(std::io::Error::other("unsupported platform for opening a browser"));
 
     match status {
         Ok(s) if s.success() => Ok(()),

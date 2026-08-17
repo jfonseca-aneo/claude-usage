@@ -28,10 +28,6 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Open the HTML report in your default browser after writing it.
-    #[arg(long, global = true, requires = "html")]
-    pub open: bool,
-
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -53,7 +49,7 @@ pub struct RangeArgs {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Combined spend + token summary (default command).
+    /// Combined spend + token summary.
     Summary,
     /// Raw token usage report, grouped by dimension(s) of your choice.
     Usage {
@@ -70,7 +66,7 @@ pub enum Command {
         #[arg(long, value_delimiter = ',', default_value = "description")]
         group_by: Vec<String>,
     },
-    /// Estimated usage from local Claude Code session logs — no API key needed.
+    /// Estimated usage from local Claude Code session logs (default command) — no API key needed.
     ///
     /// Reads the JSONL transcripts the `claude` CLI already writes to
     /// ~/.claude/projects (or $CLAUDE_CONFIG_DIR) and estimates cost from

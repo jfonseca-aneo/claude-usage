@@ -60,10 +60,10 @@ claude-usage --since 2026-08-01 --until 2026-08-15
 ```
 
 Write an HTML report (dark-mode aware, no external dependencies — safe to
-email or open offline):
+email or open offline). It opens automatically in your default browser:
 
 ```sh
-claude-usage --days 30 --html report.html --open
+claude-usage --days 30 --html report.html
 ```
 
 Machine-readable output, for piping into other tools:
