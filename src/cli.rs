@@ -20,8 +20,9 @@ pub struct Cli {
     #[arg(long, env = "ANTHROPIC_ADMIN_KEY", global = true, hide_env_values = true)]
     pub api_key: Option<String>,
 
-    /// Write a self-contained HTML report to this file.
-    #[arg(long, value_name = "FILE", global = true)]
+    /// Write a self-contained HTML report to this file. If FILE is omitted
+    /// (or passed as "-"), a name is generated from a random UUID.
+    #[arg(long, value_name = "FILE", global = true, num_args(0..=1), default_missing_value = "-")]
     pub html: Option<PathBuf>,
 
     /// Print machine-readable JSON instead of a table.

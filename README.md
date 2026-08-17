@@ -60,10 +60,12 @@ claude-usage --since 2026-08-01 --until 2026-08-15
 ```
 
 Write an HTML report (dark-mode aware, no external dependencies — safe to
-email or open offline). It opens automatically in your default browser:
+email or open offline). It opens automatically in your default browser.
+Omit the filename (or pass `-`) to get one generated from a random UUID:
 
 ```sh
 claude-usage --days 30 --html report.html
+claude-usage --days 30 --html
 ```
 
 Machine-readable output, for piping into other tools:

@@ -207,8 +207,13 @@ fn run_code(
 
 /// Appends `.html` when the given path has no extension at all, so
 /// `--html report` behaves like `--html report.html`. A path that already
-/// has some extension (even a non-html one) is left untouched.
+/// has some extension (even a non-html one) is left untouched. An empty
+/// path (`--html` passed with no FILE) gets a name generated from a
+/// random UUID.
 fn ensure_html_extension(path: std::path::PathBuf) -> std::path::PathBuf {
+    if path.as_os_str().is_empty() || path.as_os_str() == "-" {
+        return std::path::PathBuf::from(format!("{}.html", uuid::Uuid::new_v4()));
+    }
     if path.extension().is_none() {
         path.with_extension("html")
     } else {
