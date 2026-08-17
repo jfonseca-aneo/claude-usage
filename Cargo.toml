@@ -1,0 +1,23 @@
+[package]
+name = "claude-usage"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for viewing Anthropic API credit usage and cost, with an HTML report export"
+license = "MIT"
+
+[[bin]]
+name = "claude-usage"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+comfy-table = "7"
+
+[profile.release]
+opt-level = 3
+lto = true
