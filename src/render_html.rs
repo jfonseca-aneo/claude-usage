@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 
 use crate::aggregate::Summary;
 
@@ -161,7 +161,17 @@ pub fn render(summary: &Summary) -> String {
     let org = summary.org_name.as_deref().unwrap_or("Anthropic API organization");
     let generated = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
 
-    let days_covered = summary.daily_spend.len().max(1);
+    // The report's date range, not the number of days that happen to have
+    // spend recorded — a quiet day in the middle of the range shouldn't
+    // shrink "days covered".
+    let days_covered = match (
+        NaiveDate::parse_from_str(&summary.since_label, "%Y-%m-%d"),
+        NaiveDate::parse_from_str(&summary.until_label, "%Y-%m-%d"),
+    ) {
+        (Ok(since), Ok(until)) => (until - since).num_days() + 1,
+        _ => summary.daily_spend.len() as i64,
+    }
+    .max(1);
     let avg_daily = summary.total_spend_dollars / days_covered as f64;
 
     let spend_kpi_label = if summary.is_estimate { "Est. spend" } else { "Total spend" };
