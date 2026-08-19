@@ -42,6 +42,12 @@ pub struct Summary {
     /// source has a notion of "project" (e.g. local Claude Code logs).
     #[serde(default)]
     pub spend_by_project: Vec<(String, f64)>,
+    /// (date, [(project, dollars)]), chronological, mirroring `daily_spend`.
+    /// Each inner list holds only the projects with spend that day. Empty
+    /// unless the data source has per-day project granularity (local Claude
+    /// Code logs).
+    #[serde(default)]
+    pub daily_spend_by_project: Vec<(String, Vec<(String, f64)>)>,
     /// True when `total_spend_dollars` is a locally-computed estimate rather
     /// than authoritative billing data from the Cost Report API.
     #[serde(default)]
@@ -122,6 +128,7 @@ pub fn build_summary(
         token_totals,
         tokens_by_model,
         spend_by_project: Vec::new(),
+        daily_spend_by_project: Vec::new(),
         is_estimate: false,
         has_unpriced_data: false,
     }

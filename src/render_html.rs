@@ -28,10 +28,61 @@ fn fmt_tokens(n: u64) -> String {
     out
 }
 
-/// Renders the daily-spend trend as an SVG bar chart: one hue (sequential
-/// blue), 2px gaps between bars, 4px-rounded bar tops anchored to the
-/// baseline, a native <title> tooltip per bar as the hover layer.
-fn daily_spend_chart(daily: &[(String, f64)], width: f64, height: f64) -> String {
+/// Categorical palette slots (validated for CVD-safety in this fixed order —
+/// see the dataviz skill's `references/palette.md`). Projects beyond this
+/// count fold into a shared "Other" bucket rather than generating a new hue.
+const MAX_CHART_PROJECTS: usize = 8;
+
+/// Reduces `spend_by_project` (already sorted by spend descending) to the
+/// fixed set of project names the chart has color slots for, folding any
+/// overflow into a single "Other" bucket.
+fn chart_project_order(spend_by_project: &[(String, f64)]) -> Vec<String> {
+    if spend_by_project.len() <= MAX_CHART_PROJECTS {
+        spend_by_project.iter().map(|(p, _)| p.clone()).collect()
+    } else {
+        let mut order: Vec<String> = spend_by_project[..MAX_CHART_PROJECTS - 1]
+            .iter()
+            .map(|(p, _)| p.clone())
+            .collect();
+        order.push("Other".to_string());
+        order
+    }
+}
+
+/// Aligns each day's per-project breakdown to `project_order`, folding any
+/// project not in that order into the trailing "Other" slot (if present).
+fn align_daily_segments(
+    daily_by_project: &[(String, Vec<(String, f64)>)],
+    project_order: &[String],
+) -> Vec<Vec<f64>> {
+    let other_idx = project_order.iter().position(|p| p == "Other");
+    daily_by_project
+        .iter()
+        .map(|(_, entries)| {
+            let mut amounts = vec![0.0; project_order.len()];
+            for (name, amount) in entries {
+                let idx = project_order.iter().position(|p| p == name).or(other_idx);
+                if let Some(idx) = idx {
+                    amounts[idx] += amount;
+                }
+            }
+            amounts
+        })
+        .collect()
+}
+
+/// Renders the daily-spend trend as an SVG bar chart. With a project
+/// breakdown it draws stacked, per-project-colored segments (2px-gapped, 4px
+/// rounded stack top); otherwise a single sequential-blue bar per day. Either
+/// way: 2px gaps between day-bars anchored to a shared baseline, and a native
+/// <title> tooltip per bar/segment as the hover layer.
+fn daily_spend_chart(
+    daily: &[(String, f64)],
+    segments: &[Vec<f64>],
+    project_order: &[String],
+    width: f64,
+    height: f64,
+) -> String {
     if daily.is_empty() {
         return String::new();
     }
@@ -47,6 +98,9 @@ fn daily_spend_chart(daily: &[(String, f64)], width: f64, height: f64) -> String
     let gap = 2.0_f64;
     let bar_w = ((usable_w - gap * (n as f64 - 1.0)) / n as f64).max(1.0);
     let radius: f64 = 4.0_f64.min(bar_w / 2.0);
+    let seg_gap: f64 = 2.0_f64.min(chart_h / 20.0);
+
+    let by_project = segments.len() == daily.len() && project_order.len() > 1;
 
     // Show at most ~10 x-axis labels, evenly spaced.
     let label_stride = (n as f64 / 10.0).ceil().max(1.0) as usize;
@@ -67,24 +121,59 @@ fn daily_spend_chart(daily: &[(String, f64)], width: f64, height: f64) -> String
 
     for (i, (date, amount)) in daily.iter().enumerate() {
         let x = left_pad + i as f64 * (bar_w + gap);
-        let bar_h = ((amount / max_val) * chart_h).max(1.0);
-        let y = top_pad + (chart_h - bar_h);
-        let title = format!("{}: {}", esc(date), esc(&fmt_usd(*amount)));
 
-        let _ = write!(
-            svg,
-            r#"<g class="bar-group"><rect x="{x:.2}" y="{y:.2}" width="{bar_w:.2}" height="{bar_h:.2}" rx="{radius:.1}" ry="{radius:.1}" class="bar" />"#
-        );
-        // Square off the bottom corners so only the top is rounded (a rect
-        // sharp rect over the lower slice of the rounded one).
-        if bar_h > radius {
+        if by_project {
+            let amounts = &segments[i];
+            let nonzero: Vec<usize> =
+                amounts.iter().enumerate().filter(|(_, a)| **a > 0.0).map(|(idx, _)| idx).collect();
+            let mut cum_h = 0.0_f64;
+            for (seg_pos, &pi) in nonzero.iter().enumerate() {
+                let amt = amounts[pi];
+                let raw_h = (amt / max_val) * chart_h;
+                let is_top = seg_pos == nonzero.len() - 1;
+                let draw_h = (raw_h - if is_top { 0.0 } else { seg_gap }).max(0.5);
+                let seg_bottom_y = baseline_y - cum_h;
+                let seg_y = seg_bottom_y - draw_h;
+                let title =
+                    format!("{}: {} — {}", esc(date), esc(&project_order[pi]), esc(&fmt_usd(amt)));
+                let fill = format!("var(--cat-{})", pi + 1);
+
+                let _ = write!(
+                    svg,
+                    r#"<g class="bar-group"><rect x="{x:.2}" y="{seg_y:.2}" width="{bar_w:.2}" height="{draw_h:.2}" rx="{r:.1}" ry="{r:.1}" class="bar" style="fill:{fill}" />"#,
+                    r = if is_top { radius } else { 0.0 }
+                );
+                if is_top && draw_h > radius {
+                    let _ = write!(
+                        svg,
+                        r#"<rect x="{x:.2}" y="{sy:.2}" width="{bar_w:.2}" height="{radius:.1}" class="bar" style="fill:{fill}" />"#,
+                        sy = seg_bottom_y - radius
+                    );
+                }
+                let _ = write!(svg, r#"<title>{title}</title></g>"#);
+
+                cum_h += raw_h;
+            }
+        } else {
+            let bar_h = ((amount / max_val) * chart_h).max(1.0);
+            let y = top_pad + (chart_h - bar_h);
+            let title = format!("{}: {}", esc(date), esc(&fmt_usd(*amount)));
+
             let _ = write!(
                 svg,
-                r#"<rect x="{x:.2}" y="{sy:.2}" width="{bar_w:.2}" height="{radius:.1}" class="bar" />"#,
-                sy = baseline_y - radius
+                r#"<g class="bar-group"><rect x="{x:.2}" y="{y:.2}" width="{bar_w:.2}" height="{bar_h:.2}" rx="{radius:.1}" ry="{radius:.1}" class="bar" />"#
             );
+            // Square off the bottom corners so only the top is rounded (a
+            // sharp rect over the lower slice of the rounded one).
+            if bar_h > radius {
+                let _ = write!(
+                    svg,
+                    r#"<rect x="{x:.2}" y="{sy:.2}" width="{bar_w:.2}" height="{radius:.1}" class="bar" />"#,
+                    sy = baseline_y - radius
+                );
+            }
+            let _ = write!(svg, r#"<title>{title}</title></g>"#);
         }
-        let _ = write!(svg, r#"<title>{title}</title></g>"#);
 
         if i % label_stride == 0 || i == n - 1 {
             let label_x = x + bar_w / 2.0;
@@ -99,6 +188,22 @@ fn daily_spend_chart(daily: &[(String, f64)], width: f64, height: f64) -> String
 
     svg.push_str("</svg>");
     svg
+}
+
+fn chart_legend(project_order: &[String]) -> String {
+    if project_order.len() < 2 {
+        return String::new();
+    }
+    let mut items = String::new();
+    for (i, name) in project_order.iter().enumerate() {
+        let _ = write!(
+            items,
+            r#"<span class="legend-item"><span class="legend-swatch" style="background:var(--cat-{idx})"></span>{name}</span>"#,
+            idx = i + 1,
+            name = esc(name),
+        );
+    }
+    format!(r#"<div class="chart-legend">{items}</div>"#)
 }
 
 fn kpi_tile(label: &str, value: String, sub: Option<String>) -> String {
@@ -190,12 +295,15 @@ pub fn render(summary: &Summary) -> String {
         kpi_tile("Days covered", days_covered.to_string(), None),
     );
 
-    let chart = daily_spend_chart(&summary.daily_spend, 920.0, 220.0);
+    let project_order = chart_project_order(&summary.spend_by_project);
+    let segments = align_daily_segments(&summary.daily_spend_by_project, &project_order);
+    let chart = daily_spend_chart(&summary.daily_spend, &segments, &project_order, 920.0, 220.0);
+    let legend = chart_legend(&project_order);
     let chart_section = if chart.is_empty() {
         String::new()
     } else {
         format!(
-            r#"<section class="card"><h2>Daily spend</h2><div class="chart-wrap">{chart}</div></section>"#
+            r#"<section class="card"><h2>Daily spend</h2><div class="chart-wrap">{chart}</div>{legend}</section>"#
         )
     };
 
@@ -254,6 +362,8 @@ pub fn render(summary: &Summary) -> String {
   --baseline:       #c3c2b7;
   --border:         rgba(11,11,11,0.10);
   --series-1:       #2a78d6;
+  --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a; --cat-4: #eda100;
+  --cat-5: #e87ba4; --cat-6: #008300; --cat-7: #4a3aa7; --cat-8: #e34948;
 }}
 @media (prefers-color-scheme: dark) {{
   :root:not([data-theme="light"]) {{
@@ -267,6 +377,8 @@ pub fn render(summary: &Summary) -> String {
     --baseline:       #383835;
     --border:         rgba(255,255,255,0.10);
     --series-1:       #3987e5;
+    --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
+    --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
   }}
 }}
 :root[data-theme="dark"] {{
@@ -280,6 +392,8 @@ pub fn render(summary: &Summary) -> String {
   --baseline:       #383835;
   --border:         rgba(255,255,255,0.10);
   --series-1:       #3987e5;
+  --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
+  --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
 }}
 * {{ box-sizing: border-box; }}
 body {{
@@ -319,9 +433,12 @@ header .range {{ color: var(--text-secondary); margin-top: 2px; }}
 .chart-wrap {{ width: 100%; }}
 .chart-svg {{ display: block; width: 100%; height: auto; }}
 .bar {{ fill: var(--series-1); }}
-.bar-group:hover .bar {{ fill: color-mix(in srgb, var(--series-1) 80%, black); }}
+.bar-group:hover .bar {{ filter: brightness(0.85); }}
 .baseline {{ stroke: var(--baseline); stroke-width: 1; }}
 .axis-label {{ fill: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }}
+.chart-legend {{ display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }}
+.legend-item {{ display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }}
+.legend-swatch {{ width: 10px; height: 10px; border-radius: 2px; flex: none; }}
 table {{ width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }}
 th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--gridline); font-size: 13.5px; }}
 th {{ color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }}
@@ -401,6 +518,15 @@ mod tests {
                 ("ns-fd-rust".into(), 80.0),
                 ("intro-hpc-cloud".into(), 48.42),
             ],
+            daily_spend_by_project: vec![
+                ("2026-08-10".into(), vec![("ns-fd-rust".into(), 8.0), ("intro-hpc-cloud".into(), 4.0)]),
+                ("2026-08-11".into(), vec![("ns-fd-rust".into(), 12.5), ("intro-hpc-cloud".into(), 6.0)]),
+                ("2026-08-12".into(), vec![("ns-fd-rust".into(), 9.2)]),
+                ("2026-08-13".into(), vec![("intro-hpc-cloud".into(), 22.0)]),
+                ("2026-08-14".into(), vec![("ns-fd-rust".into(), 18.1), ("intro-hpc-cloud".into(), 12.0)]),
+                ("2026-08-15".into(), vec![("ns-fd-rust".into(), 14.4)]),
+                ("2026-08-16".into(), vec![("ns-fd-rust".into(), 17.82), ("intro-hpc-cloud".into(), 3.5)]),
+            ],
             is_estimate: false,
             has_unpriced_data: false,
         }
@@ -428,6 +554,7 @@ mod tests {
             token_totals: TokenTotals::default(),
             tokens_by_model: vec![],
             spend_by_project: vec![],
+            daily_spend_by_project: vec![],
             is_estimate: false,
             has_unpriced_data: false,
         };

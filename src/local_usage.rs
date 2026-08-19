@@ -204,6 +204,7 @@ pub fn build_local_summary(
     let mut spend_by_label: HashMap<String, f64> = HashMap::new();
     let mut spend_by_project: HashMap<String, f64> = HashMap::new();
     let mut daily_spend: HashMap<String, f64> = HashMap::new();
+    let mut daily_project_spend: HashMap<String, HashMap<String, f64>> = HashMap::new();
     let mut token_totals = TokenTotals::default();
     let mut tokens_by_label: HashMap<String, TokenTotals> = HashMap::new();
 
@@ -235,7 +236,12 @@ pub fn build_local_summary(
                 *spend_by_label.entry(r.model.clone()).or_insert(0.0) += dollars;
                 *spend_by_project.entry(r.project.clone()).or_insert(0.0) += dollars;
                 let date = r.timestamp.format("%Y-%m-%d").to_string();
-                *daily_spend.entry(date).or_insert(0.0) += dollars;
+                *daily_spend.entry(date.clone()).or_insert(0.0) += dollars;
+                *daily_project_spend
+                    .entry(date)
+                    .or_default()
+                    .entry(r.project.clone())
+                    .or_insert(0.0) += dollars;
             }
             None => has_unpriced_data = true,
         }
@@ -253,6 +259,18 @@ pub fn build_local_summary(
     let mut daily_spend: Vec<(String, f64)> = daily_spend.into_iter().collect();
     daily_spend.sort_by(|a, b| a.0.cmp(&b.0));
 
+    let daily_spend_by_project: Vec<(String, Vec<(String, f64)>)> = daily_spend
+        .iter()
+        .map(|(date, _)| {
+            let mut entries: Vec<(String, f64)> = daily_project_spend
+                .get(date)
+                .map(|by_project| by_project.iter().map(|(p, v)| (p.clone(), *v)).collect())
+                .unwrap_or_default();
+            entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            (date.clone(), entries)
+        })
+        .collect();
+
     Summary {
         since_label,
         until_label,
@@ -263,6 +281,7 @@ pub fn build_local_summary(
         token_totals,
         tokens_by_model,
         spend_by_project,
+        daily_spend_by_project,
         is_estimate: true,
         has_unpriced_data,
     }
