@@ -3,22 +3,24 @@
 A small CLI for checking your Anthropic credit usage and spend — in the
 terminal, as JSON, or as a self-contained HTML report.
 
-Two data sources, two subcommands:
+Two data sources:
 
+- **`code`** (the default — just run `claude-usage`) — reads Claude Code's
+  own local session logs (`~/.claude/projects/**/*.jsonl`) and estimates
+  spend from published per-model pricing. **No credentials needed at all**
+  — use this if you don't have (or can't get) an Admin API key, or if what
+  you actually want is your local `claude` CLI usage rather than org-wide
+  API billing.
 - **`summary` / `usage` / `cost`** — the official [Usage and Cost Admin API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api).
   Authoritative billing data, but needs an **Admin API key** (org-only — see
   Requirements below).
-- **`code`** — reads Claude Code's own local session logs
-  (`~/.claude/projects/**/*.jsonl`) and estimates spend from published
-  per-model pricing. **No credentials needed at all** — use this if you
-  don't have (or can't get) an Admin API key, or if what you actually want
-  is your local `claude` CLI usage rather than org-wide API billing.
 
 Neither shows Claude.ai Pro/Max subscription usage — Anthropic doesn't
 publish an API for that.
 
 ## Requirements
 
+- For `code` (the default): nothing — it only reads files already on disk.
 - For `summary` / `usage` / `cost`: an **Admin API key** for your
   organization (starts with `sk-ant-admin...`). This is different from a
   normal API key — only an org admin can create one, from the
@@ -28,8 +30,7 @@ publish an API for that.
   if you don't have one yet. (The Admin API is unavailable for individual /
   non-organization accounts — you can self-serve one by setting up an
   organization under Console → Settings → Organization, or just use `code`
-  below instead.)
-- For `code`: nothing — it only reads files already on disk.
+  instead.)
 
 ## Build
 
@@ -40,19 +41,15 @@ cargo build --release
 
 ## Usage
 
-Set your key once:
-
-```sh
-export ANTHROPIC_ADMIN_KEY=sk-ant-admin-...
-```
-
-Show the last 7 days (default) as a terminal summary:
+With no arguments, `claude-usage` runs `code`: it reads your local Claude
+Code session logs and prints the last 7 days as a terminal summary. No
+setup needed:
 
 ```sh
 claude-usage
 ```
 
-Pick a different range:
+Pick a different range (works with any (sub)command):
 
 ```sh
 claude-usage --days 30
@@ -72,6 +69,16 @@ Machine-readable output, for piping into other tools:
 
 ```sh
 claude-usage --json | jq '.total_spend_dollars'
+```
+
+If you have an Admin API key for your org, set it once to unlock the
+`summary` / `usage` / `cost` subcommands for authoritative billing data
+instead of the local estimate:
+
+```sh
+export ANTHROPIC_ADMIN_KEY=sk-ant-admin-...
+claude-usage summary --days 30
+claude-usage summary --days 30 --html report.html
 ```
 
 ### Raw reports
@@ -95,14 +102,15 @@ decimal string) — this is real billing data. Priority Tier usage is billed
 differently and isn't included in the cost endpoint — track it via
 `usage --group-by service_tier` instead, per Anthropic's docs.
 
-## `code` — no API key needed
+## `code` — no API key needed (the default)
 
 If you don't have an Admin API key (individual account, no org), or you just
-want to know how much your local Claude Code usage is costing you:
+want to know how much your local Claude Code usage is costing you, this runs
+by default — `claude-usage` and `claude-usage code` are equivalent:
 
 ```sh
-claude-usage code                              # last 7 days, all projects
-claude-usage code --days 30 --html report.html
+claude-usage                                   # last 7 days, all projects
+claude-usage --days 30 --html report.html
 ```
 
 This reads the JSONL session transcripts Claude Code already writes to
@@ -121,7 +129,9 @@ directory Claude Code was run from), which the Admin API has no concept of.
 
 ## Notes
 
-- Data typically lands within ~5 minutes of a request completing.
-- Ranges longer than the API's per-request bucket limit (31 daily buckets)
-  are paginated automatically — ask for as wide a range as you like.
-- Only `summary` supports `--html`; `usage`/`cost` are table/JSON only.
+- Data from the Admin API (`summary`/`usage`/`cost`) typically lands within
+  ~5 minutes of a request completing.
+- Ranges longer than the Admin API's per-request bucket limit (31 daily
+  buckets) are paginated automatically — ask for as wide a range as you
+  like.
+- `code` and `summary` support `--html`; `usage`/`cost` are table/JSON only.
