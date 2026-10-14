@@ -6,17 +6,20 @@ use clap::{Args, Parser, Subcommand};
 #[command(
     name = "claude-usage",
     version,
-    about = "View your Anthropic API credit usage and cost from the terminal, or export it as an HTML report",
-    long_about = "View your Anthropic API credit usage and cost from the terminal, or export it as an HTML report.\n\n\
-Requires an Admin API key (starts with sk-ant-admin...) for your Anthropic\n\
-organization — see https://platform.claude.com/docs/en/manage-claude/admin-api-keys.\n\
+    about = "View your Anthropic usage and spend from the terminal, or export it as an HTML report",
+    long_about = "View your Anthropic usage and spend from the terminal, or export it as an HTML report.\n\n\
+With no subcommand, runs `code`: estimates spend from local Claude Code session\n\
+logs. No API key needed.\n\n\
+The `summary`, `usage` and `cost` subcommands query the Admin API and need an\n\
+Admin API key (starts with sk-ant-admin...) for your Anthropic organization.\n\
+See https://platform.claude.com/docs/en/manage-claude/admin-api-keys.\n\
 Pass it with --api-key or the ANTHROPIC_ADMIN_KEY environment variable."
 )]
 pub struct Cli {
     #[command(flatten)]
     pub range: RangeArgs,
 
-    /// Admin API key (starts with sk-ant-admin...).
+    /// Admin API key (starts with sk-ant-admin...). Only needed for summary, usage and cost.
     #[arg(long, env = "ANTHROPIC_ADMIN_KEY", global = true, hide_env_values = true)]
     pub api_key: Option<String>,
 
