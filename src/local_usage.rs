@@ -179,18 +179,15 @@ fn project_label(file: &Path, root: &Path) -> String {
 
 fn shorten_project_slug(slug: &str) -> String {
     let parts: Vec<&str> = slug.split('-').filter(|s| !s.is_empty()).collect();
-    if parts.first() != Some(&"home") || parts.len() < 3 {
+    if parts.first() != Some(&"home") || parts.len() < 2 {
         return slug.to_string();
     }
     // Skip "home" and the username; also skip a following "repos" segment.
-    let mut idx = 2;
-    if parts.get(idx) == Some(&"repos") {
-        idx += 1;
-    }
-    if idx < parts.len() {
-        parts[idx..].join("-")
-    } else {
-        slug.to_string()
+    // Sessions started in the home or repos directory itself get "~" / "repos".
+    match &parts[2..] {
+        [] => "~".to_string(),
+        ["repos"] => "repos".to_string(),
+        ["repos", rest @ ..] | rest => rest.join("-"),
     }
 }
 
@@ -284,5 +281,19 @@ pub fn build_local_summary(
         daily_spend_by_project,
         is_estimate: true,
         has_unpriced_data,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shortens_project_slugs() {
+        assert_eq!(shorten_project_slug("-home-jose-repos-ns-fd-rust"), "ns-fd-rust");
+        assert_eq!(shorten_project_slug("-home-jose-scratch"), "scratch");
+        assert_eq!(shorten_project_slug("-home-jose-repos"), "repos");
+        assert_eq!(shorten_project_slug("-home-jose"), "~");
+        assert_eq!(shorten_project_slug("-tmp-foo"), "-tmp-foo");
     }
 }
